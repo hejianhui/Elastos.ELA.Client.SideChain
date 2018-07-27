@@ -191,7 +191,7 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 		txOutputs = append(txOutputs, txOutput)
 	}
 	// Get spender's UTXOs
-	UTXOs, err := wallet.GetAddressUTXOs(spender)
+	UTXOs, err := wallet.GetAddressUTXOs(spender, &SystemAssetId)
 	if err != nil {
 		return nil, errors.New("[Wallet], Get spender's UTXOs failed")
 	}
@@ -282,7 +282,7 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 		txPayload.CrossChainAmounts = append(txPayload.CrossChainAmounts, *output.Amount-perAccountFee)
 	}
 	// Get spender's UTXOs
-	UTXOs, err := wallet.GetAddressUTXOs(spender)
+	UTXOs, err := wallet.GetAddressUTXOs(spender, &SystemAssetId)
 	if err != nil {
 		return nil, errors.New("[Wallet], Get spender's UTXOs failed")
 	}

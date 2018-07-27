@@ -1,17 +1,18 @@
 package wallet
 
 import (
-	"os"
-	"fmt"
 	"bufio"
 	"errors"
-	"strings"
+	"fmt"
+	"os"
 	"strconv"
+	"strings"
 
 	walt "github.com/elastos/Elastos.ELA.Client.SideChain/wallet"
 
-	. "github.com/elastos/Elastos.ELA.Utility/common"
 	"github.com/howeyc/gopass"
+	"github.com/cheggaaa/pb"
+	. "github.com/elastos/Elastos.ELA.Utility/common"
 )
 
 func GetPassword(password []byte, confirmed bool) ([]byte, error) {
@@ -101,31 +102,42 @@ func SelectAccount(wallet walt.Wallet) (string, error) {
 
 func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) error {
 	// print header
-	fmt.Printf("%5s %34s %-20s%22s %6s\n", "INDEX", "ADDRESS", "BALANCE", "(LOCKED)", "TYPE")
-	fmt.Println("-----", strings.Repeat("-", 34), strings.Repeat("-", 42), "------")
+	width, err := pb.GetTerminalWidth()
+	if err != nil {
+		return errors.New("get current ternimal width failed")
+	}
 
+	fmt.Println(strings.Repeat("-", width))
 	currentHeight := wallet.CurrentHeight(walt.QueryHeightCode)
 	for i, addr := range addrs {
-		available := Fixed64(0)
-		locked := Fixed64(0)
-		UTXOs, err := wallet.GetAddressUTXOs(addr.ProgramHash)
+		assetIDs, err := wallet.GetAssetIDs(addr.ProgramHash)
 		if err != nil {
-			return errors.New("get " + addr.Address + " UTXOs failed")
-		}
-		for _, utxo := range UTXOs {
-			if utxo.LockTime < currentHeight {
-				available += *utxo.Amount
-			} else {
-				locked += *utxo.Amount
-			}
-		}
-		var format = "%5d %34s %-20s%22s %6s\n"
-		if newAddr != nil && newAddr.IsEqual(*addr.ProgramHash) {
-			format = "\033[0;32m" + format + "\033[m"
+			return errors.New("get " + addr.Address + " assetIDs failed")
 		}
 
-		fmt.Printf(format, i+1, addr.Address, available.String(), "("+locked.String()+")", addr.TypeName())
-		fmt.Println("-----", strings.Repeat("-", 34), strings.Repeat("-", 42), "------")
+		var format = "%-15s %-s\n"
+		fmt.Printf("%-15s %d\n", "INDEX", i+1)
+		fmt.Printf(format, "ADDRESS", addr.Address)
+		for _, assetID := range assetIDs {
+			available := Fixed64(0)
+			locked := Fixed64(0)
+			UTXOs, err := wallet.GetAddressUTXOs(addr.ProgramHash, assetID)
+			if err != nil {
+				return errors.New("get " + addr.Address + " UTXOs failed")
+			}
+			for _, utxo := range UTXOs {
+				if utxo.LockTime < currentHeight {
+					available += *utxo.Amount
+				} else {
+					locked += *utxo.Amount
+				}
+			}
+			fmt.Printf(format, "ASSETID", assetID.String())
+			fmt.Printf(format, "  ├──BALANCE", available.String())
+			fmt.Printf(format, "  └──(LOCKED)", "("+locked.String()+")")
+		}
+		fmt.Printf(format, "TYPE", addr.TypeName())
+		fmt.Println(strings.Repeat("-", width))
 	}
 
 	return nil

@@ -112,8 +112,12 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 					lockTime = block.Height + 100
 				}
 				amount, _ := StringToFixed64(output.Value)
+				assetIDBytes, _ := HexStringToBytes(output.AssetID)
+				assetID, _ := Uint256FromBytes(BytesReverse(assetIDBytes))
+
 				// Save UTXO input to data store
 				addressUTXO := &UTXO{
+					AssetID:  *assetID,
 					Op:       NewOutPoint(*referTxHash, uint16(index)),
 					Amount:   amount,
 					LockTime: lockTime,

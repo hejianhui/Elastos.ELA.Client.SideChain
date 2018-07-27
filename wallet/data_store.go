@@ -35,6 +35,7 @@ const (
 	CreateUTXOsTable = `CREATE TABLE IF NOT EXISTS UTXOs (
 				OutPoint BLOB NOT NULL PRIMARY KEY,
 				Amount BLOB NOT NULL,
+				AssetID BLOB NOT NULL,
 				LockTime INTEGER NOT NULL,
 				AddressId INTEGER NOT NULL,
 				FOREIGN KEY(AddressId) REFERENCES Addresses(Id)
@@ -42,6 +43,7 @@ const (
 )
 
 type UTXO struct {
+	AssetID  Uint256
 	Op       *OutPoint
 	Amount   *Fixed64
 	LockTime uint32
@@ -60,7 +62,8 @@ type DataStore interface {
 
 	AddAddressUTXO(programHash *Uint168, utxo *UTXO) error
 	DeleteUTXO(input *OutPoint) error
-	GetAddressUTXOs(programHash *Uint168) ([]*UTXO, error)
+	GetAddressUTXOs(programHash *Uint168, assetID *Uint256) ([]*UTXO, error)
+	GetAssetIDs(programHash *Uint168) ([]*Uint256, error)
 
 	ResetDataStore() error
 }
@@ -269,9 +272,13 @@ func (store *DataStoreImpl) AddAddressUTXO(programHash *Uint168, utxo *UTXO) err
 	buf = new(bytes.Buffer)
 	utxo.Amount.Serialize(buf)
 	amountBytes := buf.Bytes()
+	// Serialize assetID
+	buf = new(bytes.Buffer)
+	utxo.AssetID.Serialize(buf)
+	assetIDBytes := buf.Bytes()
 	// Do insert
-	sql := "INSERT INTO UTXOs(OutPoint, Amount, LockTime, AddressId) values(?,?,?,?)"
-	_, err = store.Exec(sql, opBytes, amountBytes, utxo.LockTime, addressId)
+	sql := "INSERT INTO UTXOs(OutPoint, Amount, AssetID, LockTime, AddressId) values(?,?,?,?,?)"
+	_, err = store.Exec(sql, opBytes, amountBytes, assetIDBytes, utxo.LockTime, addressId)
 	if err != nil {
 		return err
 	}
@@ -294,12 +301,12 @@ func (store *DataStoreImpl) DeleteUTXO(op *OutPoint) error {
 	return nil
 }
 
-func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168) ([]*UTXO, error) {
+func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint256) ([]*UTXO, error) {
 	store.Lock()
 	defer store.Unlock()
 
 	rows, err := store.Query(`SELECT UTXOs.OutPoint, UTXOs.Amount, UTXOs.LockTime FROM UTXOs INNER JOIN Addresses
- 								ON UTXOs.AddressId=Addresses.Id WHERE Addresses.ProgramHash=?`, programHash.Bytes())
+ 								ON UTXOs.AddressId=Addresses.Id WHERE Addresses.ProgramHash=? AND AssetID=?`, programHash.Bytes(), assetID.Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +330,35 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168) ([]*UTXO, erro
 		reader = bytes.NewReader(amountBytes)
 		amount.Deserialize(reader)
 
-		inputs = append(inputs, &UTXO{&op, &amount, lockTime})
+		inputs = append(inputs, &UTXO{*assetID, &op, &amount, lockTime})
 	}
 	return inputs, nil
+}
+
+func (store *DataStoreImpl) GetAssetIDs(programHash *Uint168) ([]*Uint256, error) {
+	store.Lock()
+	defer store.Unlock()
+
+	rows, err := store.Query(`SELECT UTXOs.AssetID FROM UTXOs INNER JOIN Addresses ON UTXOs.AddressId=Addresses.Id 
+                                    WHERE Addresses.ProgramHash=? GROUP BY UTXOs.AssetID`, programHash.Bytes())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var assetIDs []*Uint256
+	for rows.Next() {
+		var assetIDBytes []byte
+		err = rows.Scan(&assetIDBytes)
+		if err != nil {
+			return nil, err
+		}
+
+		var assetID Uint256
+		reader := bytes.NewReader(assetIDBytes)
+		assetID.Deserialize(reader)
+
+		assetIDs = append(assetIDs, &assetID)
+	}
+	return assetIDs, nil
 }
