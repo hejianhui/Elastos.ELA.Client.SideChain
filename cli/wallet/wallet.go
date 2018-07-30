@@ -388,6 +388,10 @@ func NewCommand() *cli.Command {
 				Name:  "genesis, g",
 				Usage: "calculate genesis address from genesis block hash",
 			},
+			cli.StringFlag{
+				Name:  "asset",
+				Usage: "the transfer asset id of the transaction",
+			},
 		},
 		Action: walletAction,
 		OnUsageError: func(c *cli.Context, err error, subCommand bool) error {

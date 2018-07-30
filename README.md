@@ -283,6 +283,7 @@ OPTIONS:
                                     use --file or --hex to specify the transaction file path or content
    --from value                   the spend address of the transaction
    --to value                     the receive address of the transaction
+   --asset value                  the transfer asset id of the transaction
    --amount value                 the transfer amount of the transaction
    --fee value                    the transfer fee of the transaction
    --lock value                   the lock time to specify when the received asset can be spent
@@ -318,13 +319,25 @@ Show account balance
 ```shell
 201 / 201 [=========================================================] 100.00% 0s
 --------------------------------------------------------------------------------
-Address:      EXiCyZBdvguJU5upFGZwUQMJFB53TBb6km
-ProgramHash:  7721066f3791c6df687300c9706236544baaad9f21
-Balance:      2
+INDEX           1
+ADDRESS         EKsP7fjX2XhS3hgvp3j3kQRcQyvgH8MQqT
+ASSETID         478a27744fdcdf8833122020a35fb6a323661b5c81d9109780a57e47578ff04e
+  ├──BALANCE    120
+  └──(LOCKED)   (0)
+ASSETID         b037db964a231458d2d6ffd5ea18944c4f90e63d547c5d3b9874df66a4ead0a3
+  ├──BALANCE    7999
+  └──(LOCKED)   (300.90000000)
+TYPE            MASTER
 --------------------------------------------------------------------------------
-Address:      8FQZdRrN8bSJuzSJh4im2teMqZoenmeJ4u
-ProgramHash:  433572eda403ac6372cc0004b2df2dc602a2890312
-Balance:      0
+INDEX           2
+ADDRESS         EVqpQCv7kmuqhSW3LNj75gPstizBceqne6
+ASSETID         478a27744fdcdf8833122020a35fb6a323661b5c81d9109780a57e47578ff04e
+  ├──BALANCE    80
+  └──(LOCKED)   (0)
+ASSETID         b037db964a231458d2d6ffd5ea18944c4f90e63d547c5d3b9874df66a4ead0a3
+  ├──BALANCE    998
+  └──(LOCKED)   (0)
+TYPE            MASTER
 --------------------------------------------------------------------------------
 ```
 
@@ -335,6 +348,18 @@ Create a transaction
 Create a multi output transaction
 
 `$ ./side-cli wallet -t create --from 8JiMvfWKDwEeFNY3KN38PBif19ZhGGF9MH --file addresses.csv --fee 0.00001`
+
+Create a deposit transaction
+
+`$ ./ela-cli wallet -t create --from EXiCyZBdvguJU5upFGZwUQMJFB53TBb6km --deposit EXYPqZpQQk4muDrdXoRNJhCpoQtFBQetYg --amount 10000 --fee 0.00001`
+
+Create a withdraw transaction
+
+`$ ./ela-cli wallet -t create --from EXiCyZBdvguJU5upFGZwUQMJFB53TBb6km --withdraw EXYPqZpQQk4muDrdXoRNJhCpoQtFBQetYg --amount 10000 --fee 0.00001`
+
+Create a token transaction
+
+`$ ./ela-cli wallet -t create --from EXiCyZBdvguJU5upFGZwUQMJFB53TBb6km --to EXYPqZpQQk4muDrdXoRNJhCpoQtFBQetYg --asset 478a27744fdcdf8833122020a35fb6a323661b5c81d9109780a57e47578ff04e --amount 10000 --fee 0.00001`
 
 Sign a transaction
 

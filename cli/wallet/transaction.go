@@ -75,19 +75,50 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	} else if standard != "" {
 		to = standard
 		lockStr := c.String("lock")
+		asset := c.String("asset")
 		if lockStr == "" {
-			txn, err = wallet.CreateTransaction(from, to, amount, fee)
-			if err != nil {
-				return errors.New("create transaction failed: " + err.Error())
+			if asset == "" {
+				txn, err = wallet.CreateTransaction(from, to, amount, fee)
+				if err != nil {
+					return errors.New("create transaction failed: " + err.Error())
+				}
+			} else {
+				assetIDBytes, err := HexStringToBytes(asset)
+				if err != nil {
+					return errors.New("invalid asset id")
+				}
+				assetID, err := Uint256FromBytes(assetIDBytes)
+				if err != nil {
+					return errors.New("invalid asset id")
+				}
+				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
+				if err != nil {
+					return errors.New("create token transaction failed: " + err.Error())
+				}
 			}
 		} else {
-			lock, err := strconv.ParseUint(lockStr, 10, 32)
-			if err != nil {
-				return errors.New("invalid lock height")
-			}
-			txn, err = wallet.CreateLockedTransaction(from, to, amount, fee, uint32(lock))
-			if err != nil {
-				return errors.New("create transaction failed: " + err.Error())
+			if asset == "" {
+				lock, err := strconv.ParseUint(lockStr, 10, 32)
+				if err != nil {
+					return errors.New("invalid lock height")
+				}
+				txn, err = wallet.CreateLockedTransaction(from, to, amount, fee, uint32(lock))
+				if err != nil {
+					return errors.New("create transaction failed: " + err.Error())
+				}
+			} else {
+				assetIDBytes, err := HexStringToBytes(asset)
+				if err != nil {
+					return errors.New("invalid asset id")
+				}
+				assetID, err := Uint256FromBytes(assetIDBytes)
+				if err != nil {
+					return errors.New("invalid asset id")
+				}
+				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
+				if err != nil {
+					return errors.New("create token transaction failed: " + err.Error())
+				}
 			}
 		}
 	} else {
