@@ -352,6 +352,10 @@ func NewCommand() *cli.Command {
 				Usage: "the receive address of the transaction",
 			},
 			cli.StringFlag{
+				Name:  "register",
+				Usage: "the register asset address of the transaction",
+			},
+			cli.StringFlag{
 				Name:  "amount",
 				Usage: "the transfer amount of the transaction",
 			},
@@ -391,6 +395,18 @@ func NewCommand() *cli.Command {
 			cli.StringFlag{
 				Name:  "asset",
 				Usage: "the transfer asset id of the transaction",
+			},
+			cli.StringFlag{
+				Name:  "assetname",
+				Usage: "the asset name",
+			},
+			cli.StringFlag{
+				Name:  "description",
+				Usage: "the asset description",
+			},
+			cli.StringFlag{
+				Name:  "precision",
+				Usage: "the asset precision",
 			},
 		},
 		Action: walletAction,

@@ -60,7 +60,24 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	standard := c.String("to")
 	deposit := c.String("deposit")
 	withdraw := c.String("withdraw")
-	if deposit != "" {
+	register := c.String("register")
+	if register != "" {
+		assetname := c.String("assetname")
+		if amountStr == "" {
+			return errors.New("use --assetname to specify asset name")
+		}
+		description := c.String("description")
+		precision := c.Uint("precision")
+		txn, err = wallet.CreateRegisterTransaction(from, register, &Asset{
+			Name:        assetname,
+			Description: description,
+			Precision:   byte(precision),
+			AssetType:   0x00,
+		}, amount, fee)
+		if err != nil {
+			return errors.New("create transaction failed: " + err.Error())
+		}
+	} else if deposit != "" {
 		to = config.Params().DepositAddress
 		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amount, fee)
 		if err != nil {

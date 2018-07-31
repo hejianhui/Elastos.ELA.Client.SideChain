@@ -50,6 +50,7 @@ type Wallet interface {
 	CreateCrossChainTransaction(fromAddress, toAddress, crossChainAddress string, amount, fee *Fixed64) (*Transaction, error)
 	CreateTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256) (*Transaction, error)
 	CreateLockedTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error)
+	CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error)
 
 	Sign(name string, password []byte, transaction *Transaction) (*Transaction, error)
 
@@ -174,6 +175,10 @@ func (wallet *WalletImpl) CreateLockedTokenTransaction(fromAddress, toAddress st
 	return wallet.createTokenTransaction(fromAddress, assetID, fee, lockedUntil, &Transfer{toAddress, amount})
 }
 
+func (wallet *WalletImpl) CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error) {
+	return wallet.createRegisterTransaction(fromAddress, fee, uint32(0), asset, regAmount, regAddress)
+}
+
 func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, outputs ...*Transfer) (*Transaction, error) {
 	// Check if output is valid
 	if len(outputs) == 0 {
@@ -253,8 +258,91 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 	if err != nil {
 		return nil, errors.New("[Wallet], Get spenders account info failed")
 	}
+	payload := &PayloadTransferAsset{}
+	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, payload, TransferAsset), nil
+}
 
-	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, TransferAsset), nil
+func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, asset *Asset, regAmount *Fixed64, regAddress string) (*Transaction, error) {
+	// Sync chain block data before create transaction
+	wallet.SyncChainData()
+
+	// Check if from address is valid
+	spender, err := Uint168FromAddress(fromAddress)
+	if err != nil {
+		return nil, errors.New(fmt.Sprint("[Wallet], Invalid spender address: ", fromAddress, ", error: ", err))
+	}
+	// Create transaction outputs
+	var totalOutputAmount = Fixed64(0) // The total amount will be spend
+	var txOutputs []*Output            // The outputs in transaction
+	totalOutputAmount = *fee           // Add transaction fee
+
+	var payload *PayloadRegisterAsset
+	registerAddr, err := Uint168FromAddress(regAddress)
+	if err != nil {
+		return nil, errors.New(fmt.Sprint("[Wallet], Invalid register address: ", regAddress, ", error: ", err))
+	}
+	payload = &PayloadRegisterAsset{
+		Asset:      *asset,
+		Amount:     *regAmount,
+		Controller: *registerAddr,
+	}
+	change := &Output{
+		AssetID:     payload.Asset.Hash(),
+		Value:       *regAmount,
+		OutputLock:  uint32(0),
+		ProgramHash: *registerAddr,
+	}
+	txOutputs = append(txOutputs, change)
+
+	// Get spender's UTXOs
+	UTXOs, err := wallet.GetAddressUTXOs(spender, &SystemAssetId)
+	if err != nil {
+		return nil, errors.New("[Wallet], Get spender's UTXOs failed")
+	}
+	availableUTXOs := wallet.removeLockedUTXOs(UTXOs) // Remove locked UTXOs
+	availableUTXOs = SortUTXOs(availableUTXOs)        // Sort available UTXOs by value ASC
+
+	// Create transaction inputs
+	var txInputs []*Input // The inputs in transaction
+	for _, utxo := range availableUTXOs {
+		if *utxo.Amount == Fixed64(0) {
+			continue
+		}
+		input := &Input{
+			Previous: OutPoint{
+				TxID:  utxo.Op.TxID,
+				Index: utxo.Op.Index,
+			},
+			Sequence: utxo.LockTime,
+		}
+		txInputs = append(txInputs, input)
+		if *utxo.Amount < totalOutputAmount {
+			totalOutputAmount -= *utxo.Amount
+		} else if *utxo.Amount == totalOutputAmount {
+			totalOutputAmount = 0
+			break
+		} else if *utxo.Amount > totalOutputAmount {
+			change := &Output{
+				AssetID:     SystemAssetId,
+				Value:       *utxo.Amount - totalOutputAmount,
+				OutputLock:  uint32(0),
+				ProgramHash: *spender,
+			}
+			txOutputs = append(txOutputs, change)
+			totalOutputAmount = 0
+			break
+		}
+	}
+	if totalOutputAmount > 0 {
+		return nil, errors.New("[Wallet], Available token is not enough")
+	}
+
+	account, err := wallet.GetAddressInfo(spender)
+	if err != nil {
+		return nil, errors.New("[Wallet], Get spenders account info failed")
+	}
+
+	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, payload, RegisterAsset), nil
 }
 
 func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, outputs ...*CrossChainOutput) (*Transaction, error) {
@@ -348,9 +436,7 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 		return nil, errors.New("[Wallet], Get spenders account info failed")
 	}
 
-	txn := wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, TransferCrossChainAsset)
-	txn.Payload = txPayload
-
+	txn := wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, txPayload, TransferCrossChainAsset)
 	return txn, nil
 }
 
@@ -476,8 +562,9 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 	if err != nil {
 		return nil, errors.New("[Wallet], Get token spenders account info failed")
 	}
+	payload := &PayloadTransferAsset{}
 
-	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, TransferAsset), nil
+	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, payload, TransferAsset), nil
 }
 
 func (wallet *WalletImpl) Sign(name string, password []byte, txn *Transaction) (*Transaction, error) {
@@ -610,9 +697,7 @@ func (wallet *WalletImpl) removeLockedUTXOs(utxos []*UTXO) []*UTXO {
 	return availableUTXOs
 }
 
-func (wallet *WalletImpl) newTransaction(redeemScript []byte, inputs []*Input, outputs []*Output, txType TransactionType) *Transaction {
-	// Create payload
-	txPayload := &PayloadTransferAsset{}
+func (wallet *WalletImpl) newTransaction(redeemScript []byte, inputs []*Input, outputs []*Output, txPayload Payload, txType TransactionType) *Transaction {
 	// Create attributes
 	txAttr := NewAttribute(Nonce, []byte(strconv.FormatInt(rand.Int63(), 10)))
 	attributes := make([]*Attribute, 0)

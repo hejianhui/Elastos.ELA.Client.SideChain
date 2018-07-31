@@ -361,6 +361,10 @@ Create a token transaction
 
 `$ ./ela-cli wallet -t create --from EXiCyZBdvguJU5upFGZwUQMJFB53TBb6km --to EXYPqZpQQk4muDrdXoRNJhCpoQtFBQetYg --asset 478a27744fdcdf8833122020a35fb6a323661b5c81d9109780a57e47578ff04e --amount 10000 --fee 0.00001`
 
+Create a register asset transaction
+
+`$ ./ela-cli wallet -t create --register Ec9tWML8dcFBg1gqQvs7cQQvP8uKkHgki3 --amount 1000 --fee 1 --assetname TOKEN --description "my token" --precision 4`
+
 Sign a transaction
 
 `$ ./side-cli wallet -t sign --file to_be_signed.txn`
