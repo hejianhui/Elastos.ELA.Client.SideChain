@@ -286,8 +286,11 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 		Amount:     *regAmount,
 		Controller: *registerAddr,
 	}
+	buf := new(bytes.Buffer)
+	payload.Asset.Serialize(buf)
+	assetHash := Sha256D(buf.Bytes())
 	change := &Output{
-		AssetID:     payload.Asset.Hash(),
+		AssetID:     assetHash,
 		Value:       *regAmount,
 		OutputLock:  uint32(0),
 		ProgramHash: *registerAddr,
