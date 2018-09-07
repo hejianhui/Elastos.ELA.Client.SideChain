@@ -104,7 +104,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 				if err != nil {
 					return errors.New("invalid asset id")
 				}
-				assetID, err := Uint256FromBytes(assetIDBytes)
+				assetID, err := Uint256FromBytes(BytesReverse(assetIDBytes))
 				if err != nil {
 					return errors.New("invalid asset id")
 				}

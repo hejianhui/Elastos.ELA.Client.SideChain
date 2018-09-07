@@ -132,7 +132,7 @@ func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) e
 					locked += *utxo.Amount
 				}
 			}
-			fmt.Printf(format, "ASSETID", assetID.String())
+			fmt.Printf(format, "ASSETID", BytesToHexString(BytesReverse(assetID.Bytes())))
 			fmt.Printf(format, "  ├──BALANCE", available.String())
 			fmt.Printf(format, "  └──(LOCKED)", "("+locked.String()+")")
 		}
