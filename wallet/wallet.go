@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"math/rand"
 	"strconv"
 
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 
+	. "github.com/elastos/Elastos.ELA.SideChain/core"
 	. "github.com/elastos/Elastos.ELA.Utility/common"
 	"github.com/elastos/Elastos.ELA.Utility/crypto"
-	. "github.com/elastos/Elastos.ELA.SideChain/core"
 )
 
 const (
@@ -22,8 +23,9 @@ const (
 var SystemAssetId = getSystemAssetId()
 
 type Transfer struct {
-	Address string
-	Amount  *Fixed64
+	Address     string
+	Amount      *Fixed64
+	TokenAmount *big.Int
 }
 
 type CrossChainOutput struct {
@@ -43,13 +45,11 @@ type Wallet interface {
 	AddStandardAccount(publicKey *crypto.PublicKey) (*Uint168, error)
 	AddMultiSignAccount(M uint, publicKey ...*crypto.PublicKey) (*Uint168, error)
 
-	CreateTransaction(fromAddress, toAddress string, amount, fee *Fixed64) (*Transaction, error)
 	CreateLockedTransaction(fromAddress, toAddress string, amount, fee *Fixed64, lockedUntil uint32) (*Transaction, error)
 	CreateMultiOutputTransaction(fromAddress string, fee *Fixed64, output ...*Transfer) (*Transaction, error)
 	CreateLockedMultiOutputTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, output ...*Transfer) (*Transaction, error)
 	CreateCrossChainTransaction(fromAddress, toAddress, crossChainAddress string, amount, fee *Fixed64) (*Transaction, error)
-	CreateTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256) (*Transaction, error)
-	CreateLockedTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error)
+	CreateLockedTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error)
 	CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error)
 
 	Sign(name string, password []byte, transaction *Transaction) (*Transaction, error)
@@ -141,12 +141,8 @@ func (wallet *WalletImpl) AddMultiSignAccount(M uint, publicKeys ...*crypto.Publ
 	return programHash, nil
 }
 
-func (wallet *WalletImpl) CreateTransaction(fromAddress, toAddress string, amount, fee *Fixed64) (*Transaction, error) {
-	return wallet.CreateLockedTransaction(fromAddress, toAddress, amount, fee, uint32(0))
-}
-
 func (wallet *WalletImpl) CreateLockedTransaction(fromAddress, toAddress string, amount, fee *Fixed64, lockedUntil uint32) (*Transaction, error) {
-	return wallet.CreateLockedMultiOutputTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount})
+	return wallet.CreateLockedMultiOutputTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount, new(big.Int)})
 }
 
 func (wallet *WalletImpl) CreateMultiOutputTransaction(fromAddress string, fee *Fixed64, outputs ...*Transfer) (*Transaction, error) {
@@ -161,18 +157,9 @@ func (wallet *WalletImpl) CreateCrossChainTransaction(fromAddress, toAddress, cr
 	return wallet.createCrossChainTransaction(fromAddress, fee, uint32(0), &CrossChainOutput{toAddress, amount, crossChainAddress})
 }
 
-func (wallet *WalletImpl) CreateTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256) (*Transaction, error) {
-	if assetID == &SystemAssetId {
-		return wallet.CreateLockedTransaction(fromAddress, toAddress, amount, fee, uint32(0))
-	}
-	return wallet.CreateLockedTokenTransaction(fromAddress, toAddress, amount, fee, assetID, uint32(0))
-}
-
-func (wallet *WalletImpl) CreateLockedTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error) {
-	if assetID == &SystemAssetId {
-		return wallet.createTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount})
-	}
-	return wallet.createTokenTransaction(fromAddress, assetID, fee, lockedUntil, &Transfer{toAddress, amount})
+func (wallet *WalletImpl) CreateLockedTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error) {
+	var zero Fixed64 = 0
+	return wallet.createTokenTransaction(fromAddress, assetID, fee, lockedUntil, &Transfer{toAddress, &zero, amount})
 }
 
 func (wallet *WalletImpl) CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error) {
@@ -281,6 +268,7 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 	if err != nil {
 		return nil, errors.New(fmt.Sprint("[Wallet], Invalid register address: ", regAddress, ", error: ", err))
 	}
+	amountBigInt := new(big.Int).SetInt64(int64(*regAmount)).Mul(new(big.Int).SetInt64(int64(*regAmount)), new(big.Int).SetInt64(int64(math.Pow10(18))))
 	payload = &PayloadRegisterAsset{
 		Asset:      *asset,
 		Amount:     *regAmount,
@@ -291,7 +279,7 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 	assetHash := Sha256D(buf.Bytes())
 	change := &Output{
 		AssetID:     assetHash,
-		Value:       *regAmount,
+		TokenValue:  *amountBigInt,
 		OutputLock:  uint32(0),
 		ProgramHash: *registerAddr,
 	}
@@ -470,6 +458,7 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 			AssetID:     *assetID,
 			ProgramHash: *receiver,
 			Value:       *output.Amount,
+			TokenValue:  *new(big.Int).SetInt64(0),
 			OutputLock:  lockedUntil,
 		}
 		totalOutputAmount += *output.Amount
@@ -505,7 +494,8 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 		} else if *utxo.Amount > totalOutputAmount {
 			change := &Output{
 				AssetID:     *assetID,
-				Value:       *utxo.Amount - totalOutputAmount,
+				Value:       0,
+				TokenValue:  *new(big.Int).Sub(new(big.Int).SetInt64(int64(*utxo.Amount)), new(big.Int).SetInt64(int64(totalOutputAmount))),
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}

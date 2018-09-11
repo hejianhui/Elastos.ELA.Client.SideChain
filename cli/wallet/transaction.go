@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -14,9 +15,9 @@ import (
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 	"github.com/elastos/Elastos.ELA.Client.SideChain/rpc"
 	walt "github.com/elastos/Elastos.ELA.Client.SideChain/wallet"
+	. "github.com/elastos/Elastos.ELA.SideChain/core"
 	. "github.com/elastos/Elastos.ELA.Utility/common"
 	"github.com/elastos/Elastos.ELA.Utility/crypto"
-	. "github.com/elastos/Elastos.ELA.SideChain/core"
 	"github.com/urfave/cli"
 )
 
@@ -49,10 +50,22 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	if amountStr == "" {
 		return errors.New("use --amount to specify transfer amount")
 	}
-
-	amount, err := StringToFixed64(amountStr)
+	var amountSela *Fixed64 //fixed64 or big.Int?
+	var amountBigInt *big.Int
+	var amountInt int64
+	asset := c.String("asset")
+	if asset == "" || asset == walt.SystemAssetId.String() {
+		amountSela, err = StringToFixed64(amountStr)
+	} else {
+		var success bool
+		fmt.Println("amountStr:", amountStr)
+		amountBigInt, success = new(big.Int).SetString(amountStr, 10)
+		if !success {
+			err = errors.New("parse string to big.Int failed.")
+		}
+	}
 	if err != nil {
-		return errors.New("invalid transaction amount")
+		return errors.New("invalid transaction amount: " + err.Error())
 	}
 
 	var txn *Transaction
@@ -62,6 +75,8 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	withdraw := c.String("withdraw")
 	register := c.String("register")
 	if register != "" {
+		amountInt, _ = strconv.ParseInt(amountStr, 10, 64)
+		amountIntFixed64 := Fixed64(amountInt)
 		assetname := c.String("assetname")
 		if amountStr == "" {
 			return errors.New("use --assetname to specify asset name")
@@ -73,69 +88,51 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 			Description: description,
 			Precision:   byte(precision),
 			AssetType:   0x00,
-		}, amount, fee)
+		}, &amountIntFixed64, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
 	} else if deposit != "" {
 		to = config.Params().DepositAddress
-		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amount, fee)
+		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amountSela, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
 	} else if withdraw != "" {
 		to = walt.DESTROY_ADDRESS
-		txn, err = wallet.CreateCrossChainTransaction(from, to, withdraw, amount, fee)
+		txn, err = wallet.CreateCrossChainTransaction(from, to, withdraw, amountSela, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
 	} else if standard != "" {
 		to = standard
 		lockStr := c.String("lock")
-		asset := c.String("asset")
 		if lockStr == "" {
-			if asset == "" {
-				txn, err = wallet.CreateTransaction(from, to, amount, fee)
-				if err != nil {
-					return errors.New("create transaction failed: " + err.Error())
-				}
-			} else {
-				assetIDBytes, err := HexStringToBytes(asset)
-				if err != nil {
-					return errors.New("invalid asset id")
-				}
-				assetID, err := Uint256FromBytes(BytesReverse(assetIDBytes))
-				if err != nil {
-					return errors.New("invalid asset id")
-				}
-				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
-				if err != nil {
-					return errors.New("create token transaction failed: " + err.Error())
-				}
-			}
+			lockStr = "0"
+		}
+		asset := c.String("asset")
+		lock, err := strconv.ParseUint(lockStr, 10, 32)
+
+		if err != nil {
+			return errors.New("parse utxo lock failed." + err.Error())
+		}
+
+		if asset == "" {
+			// create ela tx
+			txn, err = wallet.CreateLockedTransaction(from, to, amountSela, fee, uint32(lock))
 		} else {
-			if asset == "" {
-				lock, err := strconv.ParseUint(lockStr, 10, 32)
-				if err != nil {
-					return errors.New("invalid lock height")
-				}
-				txn, err = wallet.CreateLockedTransaction(from, to, amount, fee, uint32(lock))
-				if err != nil {
-					return errors.New("create transaction failed: " + err.Error())
-				}
-			} else {
-				assetIDBytes, err := HexStringToBytes(asset)
-				if err != nil {
-					return errors.New("invalid asset id")
-				}
-				assetID, err := Uint256FromBytes(assetIDBytes)
-				if err != nil {
-					return errors.New("invalid asset id")
-				}
-				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
-				if err != nil {
-					return errors.New("create token transaction failed: " + err.Error())
-				}
+			assetIDBytes, err := HexStringToBytes(asset)
+			if err != nil {
+				return errors.New("invalid asset id")
+			}
+			assetID, err := Uint256FromBytes(assetIDBytes)
+			if err != nil {
+				return errors.New("invalid asset id")
+			}
+			txn, err = wallet.CreateLockedTokenTransaction(from, to, amountBigInt, fee, assetID, uint32(lock))
+
+			if err != nil {
+				return errors.New("create token transaction failed: " + err.Error())
 			}
 		}
 	} else {
@@ -169,7 +166,7 @@ func createMultiOutputTransaction(c *cli.Context, wallet walt.Wallet, path, from
 			return errors.New("invalid multi output transaction amount: " + amountStr)
 		}
 		address := strings.TrimSpace(columns[0])
-		multiOutput = append(multiOutput, &walt.Transfer{address, amount})
+		multiOutput = append(multiOutput, &walt.Transfer{address, amount, new(big.Int)})
 		log.Trace("Multi output address:", address, ", amount:", amountStr)
 	}
 
