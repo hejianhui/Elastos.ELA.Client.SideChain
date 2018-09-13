@@ -22,6 +22,7 @@ type Config struct {
 func (config *Config) readConfigFile() error {
 	data, err := ioutil.ReadFile(ConfigFilename)
 	if err != nil {
+		fmt.Println("err:", err)
 		return err
 	}
 	// Remove the UTF-8 Byte Order Mark

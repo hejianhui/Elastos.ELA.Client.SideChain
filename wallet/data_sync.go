@@ -10,6 +10,8 @@ import (
 	"github.com/cheggaaa/pb"
 	. "github.com/elastos/Elastos.ELA.Utility/common"
 	. "github.com/elastos/Elastos.ELA.SideChain/core"
+	"fmt"
+	"math/big"
 )
 
 type DataSync interface {
@@ -89,6 +91,7 @@ func (sync *DataSyncImpl) containAddress(address string) (*Address, bool) {
 
 func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 	// Add UTXO to wallet address from transaction outputs
+	fmt.Println("block height:", block.Height)
 	for _, txInfo := range block.Tx {
 		data, err := json.Marshal(txInfo)
 		if err != nil {
@@ -101,6 +104,8 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 			log.Error("Resolve transaction info failed")
 			os.Exit(1)
 		}
+		fmt.Println("tx hash:", tx.Hash)
+
 		// Add UTXOs to wallet address from transaction outputs
 		for index, output := range tx.Outputs {
 			if addr, ok := sync.containAddress(output.Address); ok {
@@ -111,17 +116,25 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 				if tx.TxType == CoinBase {
 					lockTime = block.Height + 100
 				}
-				amount, _ := StringToFixed64(output.Value)
 				assetIDBytes, _ := HexStringToBytes(output.AssetID)
 				assetID, _ := Uint256FromBytes(BytesReverse(assetIDBytes))
+				amountFixed64 := new(Fixed64)
+				amountBigInt := new(big.Int).SetInt64(0)
+				if *assetID == SystemAssetId {
+					amountFixed64, _ = StringToFixed64(output.Value)
+				} else {
+					amountBigInt, _ = new(big.Int).SetString(output.Value, 10)
+				}
 
 				// Save UTXO input to data store
 				addressUTXO := &UTXO{
-					AssetID:  *assetID,
-					Op:       NewOutPoint(*referTxHash, uint16(index)),
-					Amount:   amount,
-					LockTime: lockTime,
+					AssetID:     *assetID,
+					Op:          NewOutPoint(*referTxHash, uint16(index)),
+					Amount:      amountFixed64,
+					TokenAmount: amountBigInt,
+					LockTime:    lockTime,
 				}
+				fmt.Println("asset id:", *assetID)
 				sync.AddAddressUTXO(addr.ProgramHash, addressUTXO)
 			}
 		}

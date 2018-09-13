@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"math"
 	"strconv"
 	"strings"
 
@@ -51,7 +52,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		return errors.New("use --amount to specify transfer amount")
 	}
 	var amountSela *Fixed64 //fixed64 or big.Int?
-	var amountBigInt *big.Int
+	var amountBigFloat *big.Float
 	var amountInt int64
 	asset := c.String("asset")
 	if asset == "" || asset == walt.SystemAssetId.String() {
@@ -59,7 +60,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	} else {
 		var success bool
 		fmt.Println("amountStr:", amountStr)
-		amountBigInt, success = new(big.Int).SetString(amountStr, 10)
+		amountBigFloat, success = new(big.Float).SetString(amountStr)
 		if !success {
 			err = errors.New("parse string to big.Int failed.")
 		}
@@ -117,7 +118,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 			return errors.New("parse utxo lock failed." + err.Error())
 		}
 
-		if asset == "" {
+		if asset == "" || asset == walt.SystemAssetId.String() {
 			// create ela tx
 			txn, err = wallet.CreateLockedTransaction(from, to, amountSela, fee, uint32(lock))
 		} else {
@@ -129,6 +130,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 			if err != nil {
 				return errors.New("invalid asset id")
 			}
+			amountBigInt, _ := new(big.Float).Mul(amountBigFloat, big.NewFloat(math.Pow10(MaxPrecision))).Int(nil)
 			txn, err = wallet.CreateLockedTokenTransaction(from, to, amountBigInt, fee, assetID, uint32(lock))
 
 			if err != nil {

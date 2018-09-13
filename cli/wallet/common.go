@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"math/big"
+
 
 	walt "github.com/elastos/Elastos.ELA.Client.SideChain/wallet"
 
@@ -119,22 +121,26 @@ func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) e
 		fmt.Printf("%-15s %d\n", "INDEX", i+1)
 		fmt.Printf(format, "ADDRESS", addr.Address)
 		for _, assetID := range assetIDs {
-			available := Fixed64(0)
-			locked := Fixed64(0)
+			availableELA := Fixed64(0)
+			lockedELA := Fixed64(0)
+			availableToken := new(big.Int)
+			lockedToken := new(big.Int)
 			UTXOs, err := wallet.GetAddressUTXOs(addr.ProgramHash, assetID)
 			if err != nil {
-				return errors.New("get " + addr.Address + " UTXOs failed")
+				return errors.New("get " + addr.Address + " UTXOs failed" + err.Error())
 			}
 			for _, utxo := range UTXOs {
 				if utxo.LockTime < currentHeight {
-					available += *utxo.Amount
+					availableELA += *utxo.Amount
 				} else {
-					locked += *utxo.Amount
+					lockedELA += *utxo.Amount
 				}
 			}
 			fmt.Printf(format, "ASSETID", BytesToHexString(BytesReverse(assetID.Bytes())))
-			fmt.Printf(format, "  ├──BALANCE", available.String())
-			fmt.Printf(format, "  └──(LOCKED)", "("+locked.String()+")")
+			fmt.Printf(format, "  ├──ELABALANCE", availableELA.String())
+			fmt.Printf(format, "  ├──(ELALOCKED)", "("+lockedELA.String()+")")
+			fmt.Printf(format, "  ├──TOKENBALANCE", availableToken.String())
+			fmt.Printf(format, "  └───TOKENLOCKED", lockedToken.String())
 		}
 		fmt.Printf(format, "TYPE", addr.TypeName())
 		fmt.Println(strings.Repeat("-", width))

@@ -6,12 +6,14 @@ import (
 	"math"
 	"os"
 	"sync"
+	"math/big"
 
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 
 	. "github.com/elastos/Elastos.ELA.Utility/common"
 	. "github.com/elastos/Elastos.ELA.SideChain/core"
 	_ "github.com/mattn/go-sqlite3"
+	"fmt"
 )
 
 const (
@@ -35,6 +37,7 @@ const (
 	CreateUTXOsTable = `CREATE TABLE IF NOT EXISTS UTXOs (
 				OutPoint BLOB NOT NULL PRIMARY KEY,
 				Amount BLOB NOT NULL,
+				TokenAmount BLOB NOT NULL,
 				AssetID BLOB NOT NULL,
 				LockTime INTEGER NOT NULL,
 				AddressId INTEGER NOT NULL,
@@ -43,10 +46,11 @@ const (
 )
 
 type UTXO struct {
-	AssetID  Uint256
-	Op       *OutPoint
-	Amount   *Fixed64
-	LockTime uint32
+	AssetID     Uint256
+	Op          *OutPoint
+	Amount      *Fixed64
+	TokenAmount *big.Int
+	LockTime    uint32
 }
 
 type DataStore interface {
@@ -277,9 +281,10 @@ func (store *DataStoreImpl) AddAddressUTXO(programHash *Uint168, utxo *UTXO) err
 	utxo.AssetID.Serialize(buf)
 	assetIDBytes := buf.Bytes()
 	// Do insert
-	sql := "INSERT INTO UTXOs(OutPoint, Amount, AssetID, LockTime, AddressId) values(?,?,?,?,?)"
-	_, err = store.Exec(sql, opBytes, amountBytes, assetIDBytes, utxo.LockTime, addressId)
+	sql := "INSERT INTO UTXOs(OutPoint, Amount, TokenAmount, AssetID, LockTime, AddressId) values(?,?,?,?,?,?)"
+	_, err = store.Exec(sql, opBytes, amountBytes, utxo.TokenAmount.Bytes(), assetIDBytes, utxo.LockTime, addressId)
 	if err != nil {
+		fmt.Println("execute sql error:", err)
 		return err
 	}
 	return nil
@@ -305,7 +310,7 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint2
 	store.Lock()
 	defer store.Unlock()
 
-	rows, err := store.Query(`SELECT UTXOs.OutPoint, UTXOs.Amount, UTXOs.LockTime FROM UTXOs INNER JOIN Addresses
+	rows, err := store.Query(`SELECT UTXOs.OutPoint, UTXOs.Amount, UTXOs.TokenAmount, UTXOs.LockTime FROM UTXOs INNER JOIN Addresses
  								ON UTXOs.AddressId=Addresses.Id WHERE Addresses.ProgramHash=? AND AssetID=?`, programHash.Bytes(), assetID.Bytes())
 	if err != nil {
 		return nil, err
@@ -316,8 +321,9 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint2
 	for rows.Next() {
 		var opBytes []byte
 		var amountBytes []byte
+		var tokenAmountBytes []byte
 		var lockTime uint32
-		err = rows.Scan(&opBytes, &amountBytes, &lockTime)
+		err = rows.Scan(&opBytes, &amountBytes, &tokenAmountBytes, &lockTime)
 		if err != nil {
 			return nil, err
 		}
@@ -330,7 +336,10 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint2
 		reader = bytes.NewReader(amountBytes)
 		amount.Deserialize(reader)
 
-		inputs = append(inputs, &UTXO{*assetID, &op, &amount, lockTime})
+		var tokenAmount big.Int
+		tokenAmount.SetBytes(tokenAmountBytes)
+
+		inputs = append(inputs, &UTXO{*assetID, &op, &amount, &tokenAmount, lockTime})
 	}
 	return inputs, nil
 }
