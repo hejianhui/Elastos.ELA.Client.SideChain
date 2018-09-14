@@ -123,7 +123,7 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 				if *assetID == SystemAssetId {
 					amountFixed64, _ = StringToFixed64(output.Value)
 				} else {
-					amountBigInt, _ = new(big.Int).SetString(output.Value, 10)
+					amountBigInt, _ = new(big.Int).SetString(output.TokenValue, 10)
 				}
 
 				// Save UTXO input to data store
@@ -134,7 +134,6 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 					TokenAmount: amountBigInt,
 					LockTime:    lockTime,
 				}
-				fmt.Println("asset id:", *assetID)
 				sync.AddAddressUTXO(addr.ProgramHash, addressUTXO)
 			}
 		}

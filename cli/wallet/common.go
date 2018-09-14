@@ -15,6 +15,8 @@ import (
 	"github.com/howeyc/gopass"
 	"github.com/cheggaaa/pb"
 	. "github.com/elastos/Elastos.ELA.Utility/common"
+	"math"
+	"github.com/elastos/Elastos.ELA.SideChain/core"
 )
 
 func GetPassword(password []byte, confirmed bool) ([]byte, error) {
@@ -136,11 +138,19 @@ func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) e
 					lockedELA += *utxo.Amount
 				}
 			}
+
+			for _, utxo := range UTXOs {
+				if utxo.LockTime < currentHeight {
+					availableToken = new(big.Int).Add(availableToken, utxo.TokenAmount)
+				} else {
+					lockedToken = new(big.Int).Add(lockedToken, utxo.TokenAmount)
+				}
+			}
 			fmt.Printf(format, "ASSETID", BytesToHexString(BytesReverse(assetID.Bytes())))
 			fmt.Printf(format, "  ├──ELABALANCE", availableELA.String())
 			fmt.Printf(format, "  ├──(ELALOCKED)", "("+lockedELA.String()+")")
-			fmt.Printf(format, "  ├──TOKENBALANCE", availableToken.String())
-			fmt.Printf(format, "  └───TOKENLOCKED", lockedToken.String())
+			fmt.Printf(format, "  ├──TOKENBALANCE", new(big.Int).Div(availableToken, big.NewInt(int64(math.Pow10(core.MaxPrecision)))))
+			fmt.Printf(format, "  └───TOKENLOCKED", new(big.Int).Div(lockedToken, big.NewInt(int64(math.Pow10(core.MaxPrecision)))))
 		}
 		fmt.Printf(format, "TYPE", addr.TypeName())
 		fmt.Println(strings.Repeat("-", width))

@@ -360,6 +360,7 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 		var receiver *Uint168
 		if output.Address == DESTROY_ADDRESS {
 			receiver = &Uint168{}
+
 		} else {
 			receiver, err = Uint168FromAddress(output.Address)
 			if err != nil {
@@ -446,8 +447,8 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 	}
 
 	// Create transaction outputs for token
-	var totalOutputAmount = Fixed64(0) // The total amount will be spend
-	var txOutputs []*Output            // The outputs in transaction
+	var totalOutputTokenAmount = new(big.Int).SetInt64(0) // The total amount will be spend
+	var txOutputs []*Output                 // The outputs in transaction
 
 	for _, output := range outputs {
 		receiver, err := Uint168FromAddress(output.Address)
@@ -460,7 +461,7 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 			TokenValue:  *output.TokenAmount,
 			OutputLock:  lockedUntil,
 		}
-		totalOutputAmount += *output.Amount
+		totalOutputTokenAmount.Add(totalOutputTokenAmount, output.TokenAmount)
 		txOutputs = append(txOutputs, txOutput)
 	}
 	// Get token spender's UTXOs
@@ -473,9 +474,8 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 
 	// Create transaction inputs for token
 	var txInputs []*Input // The inputs in transaction
-	totalOutputTokenAmount := new(big.Int)
 	for _, utxo := range availableTokenUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		if utxo.TokenAmount.Sign() == 0 {
 			continue
 		}
 		input := &Input{
@@ -486,25 +486,26 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		utxoTokenAmount := *utxo.TokenAmount
-		if utxoTokenAmount.Cmp(totalOutputTokenAmount) == -1 {
-			totalOutputAmount -= *utxo.Amount
-		} else if utxoTokenAmount.Cmp(totalOutputTokenAmount) == 0 {
-			totalOutputAmount = 0
+		tokenAmount := *utxo.TokenAmount
+		if tokenAmount.Cmp(totalOutputTokenAmount) == -1 {
+			totalOutputTokenAmount.Sub(totalOutputTokenAmount, utxo.TokenAmount)
+		} else if tokenAmount.Cmp(totalOutputTokenAmount) == 0 {
+			totalOutputTokenAmount.SetInt64(0)
 			break
-		} else if utxoTokenAmount.Cmp(totalOutputTokenAmount) == 1 {
+		} else if tokenAmount.Cmp(totalOutputTokenAmount) == 1 {
+			changeAmount := *new(big.Int).Sub(utxo.TokenAmount, totalOutputTokenAmount)
 			change := &Output{
 				AssetID:     *assetID,
-				TokenValue:  *new(big.Int).Sub(utxo.TokenAmount, new(big.Int).SetInt64(int64(totalOutputAmount))),
+				TokenValue:  changeAmount,
 				OutputLock:  0,
 				ProgramHash: *spender,
 			}
 			txOutputs = append(txOutputs, change)
-			totalOutputAmount = 0
+			totalOutputTokenAmount.SetInt64(0)
 			break
 		}
 	}
-	if totalOutputAmount > 0 {
+	if totalOutputTokenAmount.Sign() == 1 {
 		return nil, errors.New("[Wallet], Available token is not enough")
 	}
 
@@ -556,7 +557,13 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 		return nil, errors.New("[Wallet], Get token spenders account info failed")
 	}
 	payload := &PayloadTransferAsset{}
+	for _, input := range txInputs {
+		fmt.Println("input:", input.String())
+	}
 
+	for _, output := range txOutputs {
+		fmt.Println("output:", output.String())
+	}
 	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, payload, TransferAsset), nil
 }
 

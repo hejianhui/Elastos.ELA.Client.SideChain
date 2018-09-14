@@ -117,19 +117,18 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		if err != nil {
 			return errors.New("parse utxo lock failed." + err.Error())
 		}
-
-		if asset == "" || asset == walt.SystemAssetId.String() {
+		assetIDBytes, err := HexStringToBytes(asset)
+		if err != nil {
+			return errors.New("invalid asset id")
+		}
+		assetID, err := Uint256FromBytes(BytesReverse(assetIDBytes))
+		if err != nil {
+			return errors.New("invalid asset id")
+		}
+		if *assetID == EmptyHash || *assetID == walt.SystemAssetId {
 			// create ela tx
 			txn, err = wallet.CreateLockedTransaction(from, to, amountSela, fee, uint32(lock))
 		} else {
-			assetIDBytes, err := HexStringToBytes(asset)
-			if err != nil {
-				return errors.New("invalid asset id")
-			}
-			assetID, err := Uint256FromBytes(assetIDBytes)
-			if err != nil {
-				return errors.New("invalid asset id")
-			}
 			amountBigInt, _ := new(big.Float).Mul(amountBigFloat, big.NewFloat(math.Pow10(MaxPrecision))).Int(nil)
 			txn, err = wallet.CreateLockedTokenTransaction(from, to, amountBigInt, fee, assetID, uint32(lock))
 
