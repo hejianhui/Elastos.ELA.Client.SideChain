@@ -11,11 +11,10 @@ const (
 	ConfigFilename = "./cli-config.json"
 )
 
-var config *Config // The single instance of config
+var Parameters *Config // The single instance of config
 
 type Config struct {
 	Host                 string `json:"Host"`
-	SideChainGenesisHash string `json:"SideChainGenesisHash"`
 	DepositAddress       string `json:"DepositAddress"`
 }
 
@@ -34,13 +33,10 @@ func (config *Config) readConfigFile() error {
 	return nil
 }
 
-func Params() *Config {
-	if config == nil {
-		config = &Config{Host: "localhost:20336"}
-		err := config.readConfigFile()
-		if err != nil {
-			fmt.Println("Read config file error:", err)
-		}
+func init() {
+	Parameters = &Config{Host: "localhost:20336"}
+	err := Parameters.readConfigFile()
+	if err != nil {
+		fmt.Println("Read config file error:", err)
 	}
-	return config
 }

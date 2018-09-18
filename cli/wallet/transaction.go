@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"os"
 	"strconv"
 	"strings"
@@ -68,17 +69,21 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		}
 		description := c.String("description")
 		precision := c.Uint("precision")
+		tokenValue, ok := new(big.Int).SetString(amountStr, 10)
+		if !ok {
+			return errors.New("register amount need int value")
+		}
 		txn, err = wallet.CreateRegisterTransaction(from, register, &Asset{
 			Name:        assetname,
 			Description: description,
 			Precision:   byte(precision),
 			AssetType:   0x00,
-		}, amount, fee)
+		}, tokenValue, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
 	} else if deposit != "" {
-		to = config.Params().DepositAddress
+		to = config.Parameters.DepositAddress
 		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amount, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
@@ -108,7 +113,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 				if err != nil {
 					return errors.New("invalid asset id")
 				}
-				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
+				txn, err = wallet.CreateTokenTransaction(from, to, new(big.Int).Mul(big.NewInt(amount.IntValue()), big.NewInt(10000000000)), fee, assetID)
 				if err != nil {
 					return errors.New("create token transaction failed: " + err.Error())
 				}
@@ -132,7 +137,7 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 				if err != nil {
 					return errors.New("invalid asset id")
 				}
-				txn, err = wallet.CreateTokenTransaction(from, to, amount, fee, assetID)
+				txn, err = wallet.CreateTokenTransaction(from, to, new(big.Int).Mul(big.NewInt(amount.IntValue()), big.NewInt(10000000000)), fee, assetID)
 				if err != nil {
 					return errors.New("create token transaction failed: " + err.Error())
 				}

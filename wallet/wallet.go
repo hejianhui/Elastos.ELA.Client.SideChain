@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"strconv"
+	"math/big"
 
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 
@@ -24,6 +25,11 @@ var SystemAssetId = getSystemAssetId()
 type Transfer struct {
 	Address string
 	Amount  *Fixed64
+}
+
+type TransferToken struct {
+	Address string
+	Amount  *big.Int
 }
 
 type CrossChainOutput struct {
@@ -48,9 +54,9 @@ type Wallet interface {
 	CreateMultiOutputTransaction(fromAddress string, fee *Fixed64, output ...*Transfer) (*Transaction, error)
 	CreateLockedMultiOutputTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, output ...*Transfer) (*Transaction, error)
 	CreateCrossChainTransaction(fromAddress, toAddress, crossChainAddress string, amount, fee *Fixed64) (*Transaction, error)
-	CreateTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256) (*Transaction, error)
-	CreateLockedTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error)
-	CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error)
+	CreateTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256) (*Transaction, error)
+	CreateLockedTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error)
+	CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount *big.Int, fee *Fixed64) (*Transaction, error)
 
 	Sign(name string, password []byte, transaction *Transaction) (*Transaction, error)
 
@@ -161,21 +167,23 @@ func (wallet *WalletImpl) CreateCrossChainTransaction(fromAddress, toAddress, cr
 	return wallet.createCrossChainTransaction(fromAddress, fee, uint32(0), &CrossChainOutput{toAddress, amount, crossChainAddress})
 }
 
-func (wallet *WalletImpl) CreateTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256) (*Transaction, error) {
+func (wallet *WalletImpl) CreateTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256) (*Transaction, error) {
 	if assetID == &SystemAssetId {
-		return wallet.CreateLockedTransaction(fromAddress, toAddress, amount, fee, uint32(0))
+		value := Fixed64(amount.Int64())
+		return wallet.CreateLockedTransaction(fromAddress, toAddress, &value, fee, uint32(0))
 	}
 	return wallet.CreateLockedTokenTransaction(fromAddress, toAddress, amount, fee, assetID, uint32(0))
 }
 
-func (wallet *WalletImpl) CreateLockedTokenTransaction(fromAddress, toAddress string, amount, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error) {
+func (wallet *WalletImpl) CreateLockedTokenTransaction(fromAddress, toAddress string, amount *big.Int, fee *Fixed64, assetID *Uint256, lockedUntil uint32) (*Transaction, error) {
 	if assetID == &SystemAssetId {
-		return wallet.createTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount})
+		value := Fixed64(amount.Int64())
+		return wallet.createTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, &value})
 	}
-	return wallet.createTokenTransaction(fromAddress, assetID, fee, lockedUntil, &Transfer{toAddress, amount})
+	return wallet.createTokenTransaction(fromAddress, assetID, fee, lockedUntil, &TransferToken{toAddress, amount})
 }
 
-func (wallet *WalletImpl) CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount, fee *Fixed64) (*Transaction, error) {
+func (wallet *WalletImpl) CreateRegisterTransaction(fromAddress, regAddress string, asset *Asset, regAmount *big.Int, fee *Fixed64) (*Transaction, error) {
 	return wallet.createRegisterTransaction(fromAddress, fee, uint32(0), asset, regAmount, regAddress)
 }
 
@@ -222,7 +230,10 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 	// Create transaction inputs
 	var txInputs []*Input // The inputs in transaction
 	for _, utxo := range availableUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		var amount Fixed64
+		reader := bytes.NewReader(utxo.Amount)
+		amount.Deserialize(reader)
+		if amount == Fixed64(0) {
 			continue
 		}
 		input := &Input{
@@ -233,15 +244,15 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		if *utxo.Amount < totalOutputAmount {
-			totalOutputAmount -= *utxo.Amount
-		} else if *utxo.Amount == totalOutputAmount {
+		if amount < totalOutputAmount {
+			totalOutputAmount -= amount
+		} else if amount == totalOutputAmount {
 			totalOutputAmount = 0
 			break
-		} else if *utxo.Amount > totalOutputAmount {
+		} else if amount > totalOutputAmount {
 			change := &Output{
 				AssetID:     SystemAssetId,
-				Value:       *utxo.Amount - totalOutputAmount,
+				Value:       amount - totalOutputAmount,
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}
@@ -262,7 +273,7 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 	return wallet.newTransaction(account.RedeemScript, txInputs, txOutputs, payload, TransferAsset), nil
 }
 
-func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, asset *Asset, regAmount *Fixed64, regAddress string) (*Transaction, error) {
+func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fixed64, lockedUntil uint32, asset *Asset, regAmount *big.Int, regAddress string) (*Transaction, error) {
 	// Sync chain block data before create transaction
 	wallet.SyncChainData()
 
@@ -283,7 +294,7 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 	}
 	payload = &PayloadRegisterAsset{
 		Asset:      *asset,
-		Amount:     *regAmount,
+		Amount:    Fixed64(regAmount.Int64()),
 		Controller: *registerAddr,
 	}
 	buf := new(bytes.Buffer)
@@ -291,7 +302,7 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 	assetHash := Sha256D(buf.Bytes())
 	change := &Output{
 		AssetID:     assetHash,
-		Value:       *regAmount,
+		TokenValue: *new(big.Int).Mul(regAmount, getTokenPrecisionBigInt()),
 		OutputLock:  uint32(0),
 		ProgramHash: *registerAddr,
 	}
@@ -308,7 +319,10 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 	// Create transaction inputs
 	var txInputs []*Input // The inputs in transaction
 	for _, utxo := range availableUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		var amount Fixed64
+		reader := bytes.NewReader(utxo.Amount)
+		amount.Deserialize(reader)
+		if amount == Fixed64(0) {
 			continue
 		}
 		input := &Input{
@@ -319,15 +333,15 @@ func (wallet *WalletImpl) createRegisterTransaction(fromAddress string, fee *Fix
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		if *utxo.Amount < totalOutputAmount {
-			totalOutputAmount -= *utxo.Amount
-		} else if *utxo.Amount == totalOutputAmount {
+		if amount < totalOutputAmount {
+			totalOutputAmount -= amount
+		} else if amount == totalOutputAmount {
 			totalOutputAmount = 0
 			break
-		} else if *utxo.Amount > totalOutputAmount {
+		} else if amount > totalOutputAmount {
 			change := &Output{
 				AssetID:     SystemAssetId,
-				Value:       *utxo.Amount - totalOutputAmount,
+				Value:       amount - totalOutputAmount,
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}
@@ -402,7 +416,10 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 	// Create transaction inputs
 	var txInputs []*Input // The inputs in transaction
 	for _, utxo := range availableUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		var amount Fixed64
+		reader := bytes.NewReader(utxo.Amount)
+		amount.Deserialize(reader)
+		if amount == Fixed64(0) {
 			continue
 		}
 		input := &Input{
@@ -413,15 +430,15 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		if *utxo.Amount < totalOutputAmount {
-			totalOutputAmount -= *utxo.Amount
-		} else if *utxo.Amount == totalOutputAmount {
+		if amount < totalOutputAmount {
+			totalOutputAmount -= amount
+		} else if amount == totalOutputAmount {
 			totalOutputAmount = 0
 			break
-		} else if *utxo.Amount > totalOutputAmount {
+		} else if amount > totalOutputAmount {
 			change := &Output{
 				AssetID:     SystemAssetId,
-				Value:       *utxo.Amount - totalOutputAmount,
+				Value:       amount - totalOutputAmount,
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}
@@ -443,7 +460,7 @@ func (wallet *WalletImpl) createCrossChainTransaction(fromAddress string, fee *F
 	return txn, nil
 }
 
-func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Uint256, fee *Fixed64, lockedUntil uint32, outputs ...*Transfer) (*Transaction, error) {
+func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Uint256, fee *Fixed64, lockedUntil uint32, outputs ...*TransferToken) (*Transaction, error) {
 	// Check if output is valid
 	if len(outputs) == 0 {
 		return nil, errors.New("[Wallet], Invalid transaction target")
@@ -458,7 +475,7 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 	}
 
 	// Create transaction outputs for token
-	var totalOutputAmount = Fixed64(0) // The total amount will be spend
+	var totalOutputAmount = big.NewInt(0) // The total amount will be spend
 	var txOutputs []*Output            // The outputs in transaction
 
 	for _, output := range outputs {
@@ -469,10 +486,10 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 		txOutput := &Output{
 			AssetID:     *assetID,
 			ProgramHash: *receiver,
-			Value:       *output.Amount,
+			TokenValue:  *output.Amount,
 			OutputLock:  lockedUntil,
 		}
-		totalOutputAmount += *output.Amount
+		totalOutputAmount.Add(totalOutputAmount, output.Amount)
 		txOutputs = append(txOutputs, txOutput)
 	}
 	// Get token spender's UTXOs
@@ -486,7 +503,9 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 	// Create transaction inputs for token
 	var txInputs []*Input // The inputs in transaction
 	for _, utxo := range availableTokenUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		var amount big.Int
+		amount.SetBytes(utxo.Amount)
+		if amount.Sign() != 1 {
 			continue
 		}
 		input := &Input{
@@ -497,24 +516,24 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		if *utxo.Amount < totalOutputAmount {
-			totalOutputAmount -= *utxo.Amount
-		} else if *utxo.Amount == totalOutputAmount {
-			totalOutputAmount = 0
+		if amount.Cmp(totalOutputAmount) < 0 {
+			totalOutputAmount.Sub(totalOutputAmount, &amount)
+		} else if amount.Cmp(totalOutputAmount) == 0 {
+			totalOutputAmount = big.NewInt(0)
 			break
-		} else if *utxo.Amount > totalOutputAmount {
+		} else if amount.Cmp(totalOutputAmount) > 0 {
 			change := &Output{
 				AssetID:     *assetID,
-				Value:       *utxo.Amount - totalOutputAmount,
+				TokenValue:  *new(big.Int).Sub(&amount, totalOutputAmount),
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}
 			txOutputs = append(txOutputs, change)
-			totalOutputAmount = 0
+			totalOutputAmount = big.NewInt(0)
 			break
 		}
 	}
-	if totalOutputAmount > 0 {
+	if totalOutputAmount.Sign() > 0 {
 		return nil, errors.New("[Wallet], Available token is not enough")
 	}
 
@@ -529,7 +548,10 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 	// Create transaction inputs for ela fee
 	totalFee := *fee
 	for _, utxo := range availableElaUTXOs {
-		if *utxo.Amount == Fixed64(0) {
+		var amount Fixed64
+		reader := bytes.NewReader(utxo.Amount)
+		amount.Deserialize(reader)
+		if amount == Fixed64(0) {
 			continue
 		}
 		input := &Input{
@@ -540,15 +562,15 @@ func (wallet *WalletImpl) createTokenTransaction(fromAddress string, assetID *Ui
 			Sequence: utxo.LockTime,
 		}
 		txInputs = append(txInputs, input)
-		if *utxo.Amount < *fee {
-			totalFee -= *utxo.Amount
-		} else if *utxo.Amount == totalFee {
+		if amount < *fee {
+			totalFee -= amount
+		} else if amount == totalFee {
 			totalFee = 0
 			break
-		} else if *utxo.Amount > totalFee {
+		} else if amount > totalFee {
 			change := &Output{
 				AssetID:     SystemAssetId,
-				Value:       *utxo.Amount - totalFee,
+				Value:       amount - totalFee,
 				OutputLock:  uint32(0),
 				ProgramHash: *spender,
 			}
@@ -717,4 +739,10 @@ func (wallet *WalletImpl) newTransaction(redeemScript []byte, inputs []*Input, o
 		Programs:   []*Program{program},
 		LockTime:   0,
 	}
+}
+
+func getTokenPrecisionBigInt() *big.Int {
+	value := big.Int{}
+	value.SetString("1000000000000000000", 10)
+	return &value
 }

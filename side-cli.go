@@ -9,6 +9,9 @@ import (
 	"github.com/elastos/Elastos.ELA.Client.SideChain/cli/mine"
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 	cliLog "github.com/elastos/Elastos.ELA.Client.SideChain/cli/log"
+
+	cr "github.com/elastos/Elastos.ELA.SideChain.Token/core"
+
 	"github.com/urfave/cli"
 )
 
@@ -19,6 +22,8 @@ func init() {
 }
 
 func main() {
+	cr.InitOutputHelper()
+
 	app := cli.NewApp()
 	app.Name = "side-cli"
 	app.Version = Version

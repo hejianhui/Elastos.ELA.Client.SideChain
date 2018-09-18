@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"bytes"
+	"math/big"
 
 	walt "github.com/elastos/Elastos.ELA.Client.SideChain/wallet"
 
@@ -119,17 +121,27 @@ func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) e
 		fmt.Printf("%-15s %d\n", "INDEX", i+1)
 		fmt.Printf(format, "ADDRESS", addr.Address)
 		for _, assetID := range assetIDs {
-			available := Fixed64(0)
-			locked := Fixed64(0)
+			available := big.NewInt(0)
+			locked := big.NewInt(0)
 			UTXOs, err := wallet.GetAddressUTXOs(addr.ProgramHash, assetID)
 			if err != nil {
 				return errors.New("get " + addr.Address + " UTXOs failed")
 			}
 			for _, utxo := range UTXOs {
-				if utxo.LockTime < currentHeight {
-					available += *utxo.Amount
+				amountBigInt := big.NewInt(0)
+				if utxo.AssetID.IsEqual(walt.SystemAssetId) {
+					var amount Fixed64
+					reader := bytes.NewReader(utxo.Amount)
+					amount.Deserialize(reader)
+					amountBigInt  = big.NewInt(amount.IntValue())
 				} else {
-					locked += *utxo.Amount
+					amountBigInt.SetBytes(utxo.Amount)
+				}
+
+				if utxo.LockTime < currentHeight {
+					available.Add(available, amountBigInt)
+				} else {
+					locked.Add(locked, amountBigInt)
 				}
 			}
 			fmt.Printf(format, "ASSETID", BytesToHexString(BytesReverse(assetID.Bytes())))

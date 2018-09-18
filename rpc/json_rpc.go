@@ -63,7 +63,7 @@ func GetBlock(hash *common.Uint256) (*BlockInfo, error) {
 
 func Call(method string, params map[string]interface{}) ([]byte, error) {
 	if url == "" {
-		url = "http://" + config.Params().Host
+		url = "http://" + config.Parameters.Host
 	}
 	data, err := json.Marshal(map[string]interface{}{
 		"method": method,

@@ -3,6 +3,8 @@ package wallet
 import (
 	"encoding/json"
 	"os"
+	"bytes"
+	"math/big"
 
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 	. "github.com/elastos/Elastos.ELA.Client.SideChain/rpc"
@@ -111,15 +113,24 @@ func (sync *DataSyncImpl) processBlock(block *BlockInfo) {
 				if tx.TxType == CoinBase {
 					lockTime = block.Height + 100
 				}
-				amount, _ := StringToFixed64(output.Value)
 				assetIDBytes, _ := HexStringToBytes(output.AssetID)
 				assetID, _ := Uint256FromBytes(BytesReverse(assetIDBytes))
+				var amountBytes  []byte
+				if assetID.IsEqual(SystemAssetId) {
+					amount, _ := StringToFixed64(output.Value)
+					buf := new(bytes.Buffer)
+					amount.Serialize(buf)
+					amountBytes = buf.Bytes()
+				} else {
+					amount, _ := new(big.Int).SetString(output.Value, 10)
+					amountBytes = amount.Bytes()
+				}
 
 				// Save UTXO input to data store
 				addressUTXO := &UTXO{
 					AssetID:  *assetID,
 					Op:       NewOutPoint(*referTxHash, uint16(index)),
-					Amount:   amount,
+					Amount:   amountBytes,
 					LockTime: lockTime,
 				}
 				sync.AddAddressUTXO(addr.ProgramHash, addressUTXO)

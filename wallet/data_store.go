@@ -45,7 +45,7 @@ const (
 type UTXO struct {
 	AssetID  Uint256
 	Op       *OutPoint
-	Amount   *Fixed64
+	Amount   []byte
 	LockTime uint32
 }
 
@@ -268,17 +268,13 @@ func (store *DataStoreImpl) AddAddressUTXO(programHash *Uint168, utxo *UTXO) err
 	buf := new(bytes.Buffer)
 	utxo.Op.Serialize(buf)
 	opBytes := buf.Bytes()
-	// Serialize amount
-	buf = new(bytes.Buffer)
-	utxo.Amount.Serialize(buf)
-	amountBytes := buf.Bytes()
 	// Serialize assetID
 	buf = new(bytes.Buffer)
 	utxo.AssetID.Serialize(buf)
 	assetIDBytes := buf.Bytes()
 	// Do insert
 	sql := "INSERT INTO UTXOs(OutPoint, Amount, AssetID, LockTime, AddressId) values(?,?,?,?,?)"
-	_, err = store.Exec(sql, opBytes, amountBytes, assetIDBytes, utxo.LockTime, addressId)
+	_, err = store.Exec(sql, opBytes, utxo.Amount, assetIDBytes, utxo.LockTime, addressId)
 	if err != nil {
 		return err
 	}
@@ -326,11 +322,7 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint2
 		reader := bytes.NewReader(opBytes)
 		op.Deserialize(reader)
 
-		var amount Fixed64
-		reader = bytes.NewReader(amountBytes)
-		amount.Deserialize(reader)
-
-		inputs = append(inputs, &UTXO{*assetID, &op, &amount, lockTime})
+		inputs = append(inputs, &UTXO{*assetID, &op, amountBytes, lockTime})
 	}
 	return inputs, nil
 }
