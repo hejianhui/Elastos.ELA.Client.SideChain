@@ -207,7 +207,6 @@ func (store *DataStoreImpl) DeleteAddress(programHash *Uint168) error {
 func (store *DataStoreImpl) GetAddressInfo(programHash *Uint168) (*Address, error) {
 	store.Lock()
 	defer store.Unlock()
-
 	// Query address info by it's ProgramHash
 	row := store.QueryRow(`SELECT RedeemScript, Type FROM Addresses WHERE ProgramHash=?`, programHash.Bytes())
 	var redeemScript []byte

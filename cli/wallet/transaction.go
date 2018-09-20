@@ -51,12 +51,12 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 	if amountStr == "" {
 		return errors.New("use --amount to specify transfer amount")
 	}
-	var amountSela *Fixed64 //fixed64 or big.Int?
+	var amountEla *Fixed64 //fixed64 or big.Int?
 	var amountBigFloat *big.Float
 	var amountInt int64
 	asset := c.String("asset")
 	if asset == "" || asset == walt.SystemAssetId.String() {
-		amountSela, err = StringToFixed64(amountStr)
+		amountEla, err = StringToFixed64(amountStr)
 	} else {
 		var success bool
 		fmt.Println("amountStr:", amountStr)
@@ -95,13 +95,13 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		}
 	} else if deposit != "" {
 		to = config.Params().DepositAddress
-		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amountSela, fee)
+		txn, err = wallet.CreateCrossChainTransaction(from, to, deposit, amountEla, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
 	} else if withdraw != "" {
 		to = walt.DESTROY_ADDRESS
-		txn, err = wallet.CreateCrossChainTransaction(from, to, withdraw, amountSela, fee)
+		txn, err = wallet.CreateCrossChainTransaction(from, to, withdraw, amountEla, fee)
 		if err != nil {
 			return errors.New("create transaction failed: " + err.Error())
 		}
@@ -113,7 +113,9 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		}
 		asset := c.String("asset")
 		lock, err := strconv.ParseUint(lockStr, 10, 32)
-
+		if asset == "" {
+			asset = "a3d0eaa466df74983b5d7c543de6904f4c9418ead5ffd6d25814234a96db37b0"
+		}
 		if err != nil {
 			return errors.New("parse utxo lock failed." + err.Error())
 		}
@@ -127,7 +129,10 @@ func createTransaction(c *cli.Context, wallet walt.Wallet) error {
 		}
 		if *assetID == EmptyHash || *assetID == walt.SystemAssetId {
 			// create ela tx
-			txn, err = wallet.CreateLockedTransaction(from, to, amountSela, fee, uint32(lock))
+			txn, err = wallet.CreateLockedTransaction(from, to, amountEla, fee, uint32(lock))
+			if err != nil {
+				return errors.New("create ELA transaction failed: " + err.Error())
+			}
 		} else {
 			amountBigInt, _ := new(big.Float).Mul(amountBigFloat, big.NewFloat(math.Pow10(MaxPrecision))).Int(nil)
 			txn, err = wallet.CreateLockedTokenTransaction(from, to, amountBigInt, fee, assetID, uint32(lock))

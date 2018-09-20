@@ -142,7 +142,7 @@ func (wallet *WalletImpl) AddMultiSignAccount(M uint, publicKeys ...*crypto.Publ
 }
 
 func (wallet *WalletImpl) CreateLockedTransaction(fromAddress, toAddress string, amount, fee *Fixed64, lockedUntil uint32) (*Transaction, error) {
-	return wallet.CreateLockedMultiOutputTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount, nil})
+	return wallet.CreateLockedMultiOutputTransaction(fromAddress, fee, lockedUntil, &Transfer{toAddress, amount, new(big.Int)})
 }
 
 func (wallet *WalletImpl) CreateMultiOutputTransaction(fromAddress string, fee *Fixed64, outputs ...*Transfer) (*Transaction, error) {
@@ -183,7 +183,6 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 	var totalOutputAmount = Fixed64(0) // The total amount will be spend
 	var txOutputs []*Output            // The outputs in transaction
 	totalOutputAmount += *fee          // Add transaction fee
-
 	for _, output := range outputs {
 		receiver, err := Uint168FromAddress(output.Address)
 		if err != nil {
@@ -205,7 +204,6 @@ func (wallet *WalletImpl) createTransaction(fromAddress string, fee *Fixed64, lo
 	}
 	availableUTXOs := wallet.removeLockedUTXOs(UTXOs) // Remove locked UTXOs
 	availableUTXOs = SortUTXOs(availableUTXOs)        // Sort available UTXOs by value ASC
-
 	// Create transaction inputs
 	var txInputs []*Input // The inputs in transaction
 	for _, utxo := range availableUTXOs {
