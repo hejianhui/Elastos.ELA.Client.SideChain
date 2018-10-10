@@ -10,7 +10,7 @@ import (
 	"github.com/elastos/Elastos.ELA.Client.SideChain/log"
 
 	. "github.com/elastos/Elastos.ELA.Utility/common"
-	. "github.com/elastos/Elastos.ELA.SideChain/core"
+	"github.com/elastos/Elastos.ELA.SideChain/types"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -44,7 +44,7 @@ const (
 
 type UTXO struct {
 	AssetID  Uint256
-	Op       *OutPoint
+	Op       *types.OutPoint
 	Amount   []byte
 	LockTime uint32
 }
@@ -61,7 +61,7 @@ type DataStore interface {
 	GetAddresses() ([]*Address, error)
 
 	AddAddressUTXO(programHash *Uint168, utxo *UTXO) error
-	DeleteUTXO(input *OutPoint) error
+	DeleteUTXO(input *types.OutPoint) error
 	GetAddressUTXOs(programHash *Uint168, assetID *Uint256) ([]*UTXO, error)
 	GetAssetIDs(programHash *Uint168) ([]*Uint256, error)
 
@@ -281,7 +281,7 @@ func (store *DataStoreImpl) AddAddressUTXO(programHash *Uint168, utxo *UTXO) err
 	return nil
 }
 
-func (store *DataStoreImpl) DeleteUTXO(op *OutPoint) error {
+func (store *DataStoreImpl) DeleteUTXO(op *types.OutPoint) error {
 	store.Lock()
 	defer store.Unlock()
 
@@ -318,7 +318,7 @@ func (store *DataStoreImpl) GetAddressUTXOs(programHash *Uint168, assetID *Uint2
 			return nil, err
 		}
 
-		var op OutPoint
+		var op types.OutPoint
 		reader := bytes.NewReader(opBytes)
 		op.Deserialize(reader)
 

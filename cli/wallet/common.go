@@ -145,14 +145,36 @@ func ShowAccounts(addrs []*walt.Address, newAddr *Uint168, wallet walt.Wallet) e
 				}
 			}
 			fmt.Printf(format, "ASSETID", BytesToHexString(BytesReverse(assetID.Bytes())))
-			fmt.Printf(format, "  ├──BALANCE", available.String())
-			fmt.Printf(format, "  └──(LOCKED)", "("+locked.String()+")")
+			if assetID.IsEqual(walt.SystemAssetId) {
+				fmt.Printf(format, "  ├──BALANCE", Fixed64(available.Int64()).String())
+				fmt.Printf(format, "  └──(LOCKED)", "("+Fixed64(locked.Int64()).String()+")")
+			} else {
+				fmt.Printf(format, "  ├──BALANCE", getValue(available))
+				fmt.Printf(format, "  └──(LOCKED)", "("+getValue(locked)+")")
+			}
 		}
 		fmt.Printf(format, "TYPE", addr.TypeName())
 		fmt.Println(strings.Repeat("-", width))
 	}
 
 	return nil
+}
+
+func getValue( value *big.Int) string {
+	var buff bytes.Buffer
+	if value.Sign() == 0 {
+		return "0"
+	} else if value.Sign() < 0 {
+		buff.WriteRune('-')
+	}
+	str := value.String()
+	strLen := len(str)
+	if strLen > 18 {
+		buff.WriteString(str[:len(str) - 19 - 1])
+		buff.WriteRune('.')
+		buff.WriteString(str[len(str) - 19 - 1: len(str) - 1])
+	}
+	return buff.String()
 }
 
 func getInput(max int) int {

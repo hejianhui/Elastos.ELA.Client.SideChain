@@ -19,10 +19,11 @@ var Version string
 
 func init() {
 	log.InitLog()
+	cr.Init()
 }
 
 func main() {
-	cr.InitOutputHelper()
+
 
 	app := cli.NewApp()
 	app.Name = "side-cli"

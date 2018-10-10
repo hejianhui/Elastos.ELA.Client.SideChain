@@ -9,7 +9,7 @@ import (
 
 	. "github.com/elastos/Elastos.ELA.Utility/common"
 	"github.com/elastos/Elastos.ELA.Utility/crypto"
-	. "github.com/elastos/Elastos.ELA.SideChain/core"
+	"github.com/elastos/Elastos.ELA.SideChain/types"
 	"crypto/elliptic"
 )
 
@@ -26,7 +26,7 @@ type Keystore interface {
 	GetProgramHash() *Uint168
 	Address() string
 
-	Sign(txn *Transaction) ([]byte, error)
+	Sign(txn *types.Transaction) ([]byte, error)
 }
 
 type KeystoreImpl struct {
@@ -316,7 +316,7 @@ func (store *KeystoreImpl) Address() string {
 	return store.address
 }
 
-func (store *KeystoreImpl) Sign(txn *Transaction) ([]byte, error) {
+func (store *KeystoreImpl) Sign(txn *types.Transaction) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	txn.SerializeUnsigned(buf)
 	signedData, err := crypto.Sign(store.privateKey, buf.Bytes())
