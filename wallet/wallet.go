@@ -722,7 +722,7 @@ func (wallet *WalletImpl) removeLockedUTXOs(utxos []*UTXO) []*UTXO {
 	return availableUTXOs
 }
 
-func (wallet *WalletImpl) newTransaction(redeemScript []byte, inputs []*types.Input, outputs []*types.Output, txPayload types.Payload, txType types.TransactionType) *types.Transaction {
+func (wallet *WalletImpl) newTransaction(redeemScript []byte, inputs []*types.Input, outputs []*types.Output, txPayload types.Payload, txType types.TxType) *types.Transaction {
 	// Create attributes
 	txAttr := types.NewAttribute(types.Nonce, []byte(strconv.FormatInt(rand.Int63(), 10)))
 	attributes := make([]*types.Attribute, 0)
